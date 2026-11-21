@@ -10,7 +10,7 @@ type Command struct {
 	Args []string
 }
 
-type Handler func(args []string) string
+type Handler func(store *Store, args []string) string
 
 type CommandEntry struct {
 	handler Handler
@@ -21,11 +21,11 @@ var commands = map[string]CommandEntry{
 	"PING": {handler: ping, arity: 0},
 }
 
-func ping(args []string) string {
+func ping(_ *Store, args []string) string {
 	return "+PONG\r\n"
 }
 
-func Dispatch(cmd Command) string {
+func Dispatch(cmd Command, store *Store) string {
 	entry, ok := commands[strings.ToUpper(cmd.Name)]
 	if !ok {
 		return fmt.Sprintf("-ERR unknown command '%s'\r\n", cmd.Name)
@@ -34,5 +34,5 @@ func Dispatch(cmd Command) string {
 		return fmt.Sprintf("-ERR wrong number of arguments for '%s' command\r\n",
 			strings.ToLower(cmd.Name))
 	}
-	return entry.handler(cmd.Args)
+	return entry.handler(store, cmd.Args)
 }

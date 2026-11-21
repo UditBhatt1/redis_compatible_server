@@ -3,37 +3,17 @@ package server
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
 	"strings"
 )
 
-func TcpListener() {
+func HandleConnection(conn net.Conn, requests chan<- Request) {
 
-	listener, err := net.Listen("tcp", ":8090")
-	if err != nil {
-		log.Fatal("Error listening:", err)
-	}
-
-	defer listener.Close()
-	fmt.Println("Tcp server started at port 8090")
-
-	for {
-
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Println("Error accepting conn:", err)
-			continue
-		}
-
-		go HandleConnection(conn)
-	}
-}
-
-func HandleConnection(conn net.Conn) {
-
+	//request chan<- Request is a send only channel
+	// it sends value from variable to channel
+	// or sending to channel
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 
@@ -53,18 +33,48 @@ func HandleConnection(conn net.Conn) {
 			}
 			return
 		}
-		log.Printf("cmd %q args %q", command.Name, command.Args)
 
 		if strings.EqualFold(command.Name, "QUIT") {
 			conn.Write([]byte("+OK\r\n"))
 			return
 		}
 
-		reply := Dispatch(command)
-		if _, err := conn.Write([]byte(reply)); err != nil {
+		replyCh := make(chan string, 1)
+
+		requests <- Request{Cmd: command, ReplyCh: replyCh}
+		response := <-replyCh
+
+		if _, err := conn.Write([]byte(response)); err != nil {
 			log.Println("write error:", err)
 			return
 		}
 	}
 
+}
+
+func TcpListener() {
+
+	listener, err := net.Listen("tcp", ":8090")
+	if err != nil {
+		log.Fatal("Error listening:", err)
+	}
+
+	defer listener.Close()
+	log.Println("Tcp server started at port 8090")
+
+	store := NewStore()
+	requests := make(chan Request, 100)
+
+	go RunOwner(requests, store)
+
+	for {
+
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Println("Error accepting conn:", err)
+			continue
+		}
+
+		go HandleConnection(conn, requests)
+	}
 }
